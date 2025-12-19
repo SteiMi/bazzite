@@ -58,6 +58,7 @@ ARG VERSION_PRETTY="${VERSION_PRETTY}"
 
 COPY system_files/desktop/shared system_files/desktop/${BASE_IMAGE_NAME} /
 COPY firmware /
+COPY module_signing.der /
 
 # Copy Homebrew files from the brew image
 COPY --from=ghcr.io/ublue-os/brew:latest@sha256:025fa03e1741bbbc792bd604117c20eade45e3033394bbb5e57d454847ad95a0 /system_files /
@@ -141,6 +142,7 @@ RUN --mount=type=cache,dst=/var/cache \
     --mount=type=cache,dst=/var/log \
     --mount=type=bind,from=ctx,source=/,target=/ctx \
     --mount=type=tmpfs,dst=/tmp \
+    --mount=type=secret,id=MODULE_SIGNING_KEY \
     dnf5 -y install \
         make \
         gcc && \
@@ -170,6 +172,15 @@ RUN --mount=type=cache,dst=/var/cache \
         fi && \
         echo "Using kernel build dir: ${KERNEL_BUILD_DIR}" && \
         make KERNEL_BUILD=${KERNEL_BUILD_DIR} && \
+        # Sign the built module with the persistent signing key (if secret is available)
+        if [ -f /run/secrets/MODULE_SIGNING_KEY ]; then \
+          mkdir -p /tmp/ryzen_smu_sign && \
+          cp /run/secrets/MODULE_SIGNING_KEY /tmp/ryzen_smu_sign/module.priv && \
+          if [ -x "${KERNEL_BUILD_DIR}/scripts/sign-file" ] && [ -f /module_signing.der ]; then \
+            "${KERNEL_BUILD_DIR}/scripts/sign-file" sha256 /tmp/ryzen_smu_sign/module.priv /module_signing.der ryzen_smu.ko || true; \
+          fi && \
+          rm -f /tmp/ryzen_smu_sign/module.priv || true; \
+        fi && \
         # Install the built module into every valid /lib/modules/<ver>/extra so kernels with different suffixes find it
         for M in /lib/modules/*; do \
             if [ -d "$M" ] && ( [ -e "$M/build" ] || [ -f "$M/modules.dep" ] || [ -d "$M/kernel" ] ); then \
@@ -187,6 +198,11 @@ RUN --mount=type=cache,dst=/var/cache \
     cd / && \
     rm -rf /tmp/ryzen_smu_build && \
     dnf5 -y remove make gcc && \
+    # Copy the public module signing cert to the image for user MOK enrollment
+    mkdir -p /usr/share/keys/ryzen_smu && \
+    if [ -f /module_signing.der ]; then \
+      cp -v /module_signing.der /usr/share/keys/ryzen_smu/MOK.der; \
+    fi && \
     mkdir -p /etc/modules-load.d && \
     echo "ryzen_smu" > /etc/modules-load.d/ryzen_smu.conf && \
     /ctx/cleanup

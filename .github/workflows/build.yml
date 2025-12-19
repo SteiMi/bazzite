@@ -258,11 +258,13 @@ jobs:
         id: build_image
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          MODULE_SIGNING_KEY: ${{ secrets.MODULE_SIGNING_KEY }}
         run: |
           sudo -E buildah build \
             --target ${{ steps.base.outputs.container_target }} \
             --build-arg-file build_args.txt \
             --secret "id=GITHUB_TOKEN,env=GITHUB_TOKEN" \
+            --secret "id=MODULE_SIGNING_KEY,env=MODULE_SIGNING_KEY" \
             --tag raw-img .
 
       # Reprocess raw-img using rechunker which will delete it
