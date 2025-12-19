@@ -170,8 +170,20 @@ RUN --mount=type=cache,dst=/var/cache \
         fi && \
         echo "Using kernel build dir: ${KERNEL_BUILD_DIR}" && \
         make KERNEL_BUILD=${KERNEL_BUILD_DIR} && \
-    mkdir -p /lib/modules/${KERNEL_VERSION}/extra && \
-    cp ryzen_smu.ko /lib/modules/${KERNEL_VERSION}/extra/ && \
+        # Install the built module into every valid /lib/modules/<ver>/extra so kernels with different suffixes find it
+        for M in /lib/modules/*; do \
+            if [ -d "$M" ] && ( [ -e "$M/build" ] || [ -f "$M/modules.dep" ] || [ -d "$M/kernel" ] ); then \
+                mkdir -p "$M/extra"; \
+                cp -v ryzen_smu.ko "$M/extra/"; \
+            fi; \
+        done && \
+        # Recompute module dependency tables only for kernels we touched (avoid scanning missing host dirs)
+        for M in /lib/modules/*; do \
+            if [ -d "$M" ] && [ -d "$M/extra" ]; then \
+                KVER=$(basename "$M"); \
+                depmod -a "$KVER" || true; \
+            fi; \
+        done && \
     cd / && \
     rm -rf /tmp/ryzen_smu_build && \
     dnf5 -y remove make gcc && \
