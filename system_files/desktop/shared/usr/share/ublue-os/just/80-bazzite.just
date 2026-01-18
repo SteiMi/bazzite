@@ -100,7 +100,11 @@ configure-grub ACTION="":
     # Function to get the current GRUB menu_auto_hide setting and explain it
     get_current_setting() {
       local CURRENT_SETTING
-      CURRENT_SETTING=$(sudo grub2-editenv - list | grep menu_auto_hide | cut -d= -f2)
+      if sudo grub2-editenv - list | grep -q '^menu_auto_hide='; then
+        CURRENT_SETTING=$(sudo grub2-editenv - list | awk -F= '/menu_auto_hide/ {print $2}')
+      else
+        CURRENT_SETTING=""
+      fi
       if [ -z "$CURRENT_SETTING" ]; then
         echo "Current GRUB menu_auto_hide setting: ${bold}${red}Not Set (default to 0)${normal}"
         echo "Explanation:"
@@ -585,6 +589,48 @@ toggle-global-fsr4 ACTION="":
         Disable|disable)
             rm -f "$FILE"
             echo -e "${red}${bold}Disabled${normal}: PROTON_FSR4_UPGRADE removed"
+            ;;
+        *)
+            echo "No changes made."
+            ;;
+    esac
+
+# Toggle global Proton FSR4 upgrade on RDNA3 GPUs; upgrades FSR 3.1+ → FSR 4, only compatible with Proton GE, Proton EM, or similar forks
+[group("gaming")]
+toggle-global-fsr4-rdna3 ACTION="":
+    #!/usr/bin/bash
+    set -euo pipefail
+    source /usr/lib/ujust/ujust.sh
+
+    FILE="$HOME/.config/environment.d/99-proton-fsr4-rdna3.conf"
+
+    CURRENT="Disabled"
+    if [[ -f "$FILE" ]]; then
+        CURRENT="Enabled"
+    fi
+
+    OPTION="{{ ACTION }}"
+    if [[ -z "$OPTION" ]]; then
+        echo -e "${bold}Global FSR4 (RDNA3):${normal} $CURRENT"
+        echo ""
+        echo "Enables Proton's FSR4 upgrade path on RDNA3 GPUs (e.g. RX 7900 XTX)."
+        echo "When enabled, Proton can upgrade games using FSR 3.1+ to FSR 4 (FP8 Emulation)"
+        echo "and automatically fetch the required FSR4 DLL."
+        echo ""
+        echo -e "${bold}Note:${normal} This is only compatible with Proton GE, Proton EM, or similar forks."
+        echo ""
+        OPTION="$(ugum choose "Enable" "Disable" "Exit without saving")"
+    fi
+
+    case "$OPTION" in
+        Enable|enable)
+            mkdir -p "$HOME/.config/environment.d"
+            echo "PROTON_FSR4_RDNA3_UPGRADE=1" > "$FILE"
+            echo -e "${green}${bold}Enabled${normal}: PROTON_FSR4_RDNA3_UPGRADE=1"
+            ;;
+        Disable|disable)
+            rm -f "$FILE"
+            echo -e "${red}${bold}Disabled${normal}: PROTON_FSR4_RDNA3_UPGRADE removed"
             ;;
         *)
             echo "No changes made."

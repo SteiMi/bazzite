@@ -4,11 +4,13 @@ set -exo pipefail
 
 source /etc/os-release
 
-# Install Anaconda webui
-dnf install -qy anaconda-live libblockdev-{btrfs,lvm,dm}
+# Remove all versionlocks, in order to avoid dependency issues
+dnf -qy versionlock clear
+
+# Install Anaconda
+dnf install -qy --enable-repo=fedora-cisco-openh264 --allowerasing firefox anaconda-live libblockdev-{btrfs,lvm,dm}
+
 mkdir -p /var/lib/rpm-state # Needed for Anaconda Web UI
-# TODO: Enable Anaconda Web UI whenever locale switching in kde lands
-# dnf install -qy anaconda-webui
 
 # Utilities for displaying a dialog prompting users to review secure boot documentation
 dnf install -qy --setopt=install_weak_deps=0 qrencode yad
@@ -75,6 +77,20 @@ case "${PRETTY_NAME,,}" in
     cp -r /root/packages/installer/branding/* /usr/share/anaconda/pixmaps/
     ;;
 esac
+
+# Installer icon
+_icon=/root/packages/installer/branding/bazzite-installer.svg
+_icon_symbol=/root/packages/installer/branding/bazzite-installer-symbolic.svg
+if [[ -f $_icon ]]; then
+    for f in \
+        /usr/share/icons/hicolor/48x48/apps/org.fedoraproject.AnacondaInstaller.svg \
+        /usr/share/icons/hicolor/scalable/apps/org.fedoraproject.AnacondaInstaller.svg; do
+        cp "$_icon" "$f"
+    done
+    cp "$_icon_symbol" /usr/share/icons/hicolor/symbolic/apps/org.fedoraproject.AnacondaInstaller-symbolic.svg
+fi
+unset -v _icon
+unset -v _icon_symbol
 rm -rf /root/packages
 
 # Secureboot Key Fetch
@@ -93,11 +109,35 @@ mkdir -p /tmp/anacoda_custom_logs
 %pre --erroronfail --log=/tmp/anacoda_custom_logs/detect_bitlocker.log
 DOCS_QR=/tmp/detect_bitlocker_qr.png
 IS_BITLOCKER=\$(lsblk -o FSTYPE --json | jq '.blockdevices | map(select(.fstype == "BitLocker")) | . != []')
+{ WARNING_MSG="\$(</dev/stdin)"; } << 'WARNINGEOF'
+<span size="x-large">Windows Bitlocker partition detected</span>
+
+It might interrupt the installation process.
+In such case, please, do <b>one</b> of the following:
+    a) Disconnect its storage drive.
+    b) Disable Bitlocker in Windows.
+    c) Delete it in GNOME Disks.
+
+Do you wish to continue?
+WARNINGEOF
+
 if [[ \$IS_BITLOCKER =~ true ]]; then
     qrencode -o \$DOCS_QR "https://www.wikihow.com/Turn-Off-BitLocker"
-    run0 --user=liveuser yad --timeout=0 --image=\$DOCS_QR \
-        --text="<b>Windows Bitlocker partition detected</b>\nPlease, disable it in Windows or delete it in GNOME Disks\nor disconnect its storage drive." || :
-    exit 1
+    _EXITLOCK=1
+    _RETCODE=0
+    while [[ \$_EXITLOCK -ne 0 ]]; do
+        run0 --user=liveuser yad \
+            --on-top \
+            --timeout=10 \
+            --image=\$DOCS_QR \
+            --text="\$WARNING_MSG" \
+            --button="Yes, I'm aware, continue":0 --button="Cancel installation":10
+        _RETCODE=\$?
+        case \$_RETCODE in
+            0) _EXITLOCK=0; ;;
+            10) _EXITLOCK=0; pkill liveinst; pkill firefox; exit 0 ;;
+        esac
+    done
 fi
 %end
 
@@ -150,7 +190,10 @@ EOF
 # Signed Images
 cat <<EOF >>/usr/share/anaconda/post-scripts/install-configure-upgrade.ks
 %post --erroronfail --log=/tmp/anacoda_custom_logs/bootc-switch.log
-bootc switch --mutate-in-place --enforce-container-sigpolicy --transport registry $imageref:$imagetag
+# bootc switch --mutate-in-place --enforce-container-sigpolicy --transport registry $imageref:$imagetag
+
+# DELETEME: This is a nasty hack. Remove whenever http://github.com/bootc-dev/bootc/commit/f7b41cc1ebfc823e9de848b55773faddc59ecf88 makes it into a release
+sed -i 's|container-image-reference=.*|container-image-reference=ostree-image-signed:docker://$imageref:$imagetag|' /ostree/deploy/default/deploy/*.origin
 %end
 EOF
 
@@ -395,6 +438,17 @@ EOF
 echo '#!/usr/bin/bash' >/usr/bin/on_gui_login.sh
 chmod +x /usr/bin/on_gui_login.sh
 mkdir -p /etc/skel/.config/autostart
+cat >>/usr/bin/on_gui_login.sh <<'EOF'
+# if CSM/Legacy show blocking message and power off
+if [ -d /sys/firmware/efi ]; then
+    exit 0
+fi
+yad --undecorated --on-top --timeout=0 --button=Shutdown:0 \
+    --text="Bazzite does not support CSM/Legacy Boot. Please boot into your UEFI/BIOS settings, disable CSM/Legacy Mode, and reboot." || true
+systemctl poweroff || shutdown -h now || true
+exit 0
+EOF
+
 cat >/etc/skel/.config/autostart/on_gui_login.desktop <<'EOF'
 [Desktop Entry]
 Exec=/usr/bin/on_gui_login.sh
@@ -410,6 +464,29 @@ Nvidia drivers might not be functional on live isos.
 Please do not use them in benchmarks.
 WARNINGEOF
 EOF
+fi
+
+# Use GSK_RENDERER=gl for nvidia, workaround for GTK apps not opening.
+if [[ $imageref == *-nvidia* ]]; then
+    mkdir -p /etc/environment.d /etc/skel/.config/environment.d
+    echo "GSK_RENDERER=gl" >>/etc/environment.d/99-nvidia-fix.conf
+    echo "GSK_RENDERER=gl" >>/etc/skel/.config/environment.d/99-nvidia-fix.conf
+fi
+
+# Reenable noveau.
+if [[ $imageref == *-nvidia* ]]; then
+    for pkg in nvidia-gpu-firmware mesa-vulkan-drivers; do
+        dnf -yq reinstall --allowerasing $pkg ||
+            dnf -yq install --allowerasing $pkg
+    done
+    # Ensure noveau vulkan icds exist
+    (
+        shopt -u nullglob
+        ls /usr/share/vulkan/icd.d/nouveau_icd.*.json >/dev/null
+    ) || {
+        echo >&2 "::error::No nouveau vulkan icds found at /usr/share/vulkan/icd.d/nouveau_icd.*.json"
+        exit 1
+    }
 fi
 
 # Determine desktop environment. Must match one of /usr/libexec/livesys/sessions.d/livesys-{desktop_env}
@@ -430,19 +507,43 @@ esac
 rm -vf /etc/skel/.config/autostart/steam*.desktop
 
 # Remove packages that shouldnt be used in a live session
-dnf -yq remove steam lutris || :
+dnf -yq remove steam lutris bazaar || :
 
-# Warn about limited capabilities of live sessions
+# Warn about limited capabilities of live sessions, and also show buttons to:
+#   - Install Bazzite
+#   - Launch Bootloader Restoring tool
+#   - Close dialog
 cat >>/usr/bin/on_gui_login.sh <<'EOF'
-yad --timeout=30 \
-    --no-escape \
-    --no-buttons \
-    --on-top \
-    --timeout-indicator=bottom \
-    --text-align=center \
-    --title="Welcome" \
-    --text="\nWelcome to the Live ISO for Bazzite\!\n\nThe Live ISO is designed for installation and troubleshooting.\nBecause of this, it is <b>not capable of playing games.</b>\n\nPlease do not use it for benchmarks as it\ndoes not represent the installed experience.\n" \
-    || :
+_EXITLOCK=1
+_RETVAL=0
+while [[ $_EXITLOCK -eq 1 ]]; do
+    yad \
+        --no-escape \
+        --on-top \
+        --timeout-indicator=bottom \
+        --text-align=center \
+        --buttons-layout=center \
+        --title="Welcome" \
+        --text="\nWelcome to the Live ISO for Bazzite\!\n\nThe Live ISO is designed for installation and troubleshooting.\nBecause of this, it is <b>not capable of playing games.</b>\n\nPlease do not use it for benchmarks as it\ndoes not represent the installed experience.\n" \
+        --button="Install Bazzite":10 \
+        --button="Launch Bootloader Restoring tool":20 \
+        --button="Close dialog":0
+    _RETVAL=$?
+
+    case $_RETVAL in
+        10)
+            liveinst & disown $!
+            _EXITLOCK=0
+            ;;
+        20)
+            /usr/bin/bootloader_restore.sh & disown $!
+            _EXITLOCK=0
+            ;;
+        0) _EXITLOCK=0 ;;
+    esac
+done
+unset -v _EXITLOCK
+unset -v _RETVAL
 EOF
 
 (
