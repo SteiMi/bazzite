@@ -361,6 +361,7 @@ RUN --mount=type=cache,dst=/var/cache \
     systemctl disable iwd.service && \
     mkdir -p /usr/lib/extest/ && \
     /ctx/ghcurl "$(/ctx/ghcurl https://api.github.com/repos/ublue-os/extest/releases/latest | jq -r '.assets[] | select(.name| test(".*so$")).browser_download_url')" -Lo /usr/lib/extest/libextest.so && \
+    /ctx/ghcurl -s https://api.github.com/repos/xXJSONDeruloXx/yafti-gtk/releases/latest | jq -r '.tag_name' | sed -E 's/^v//' > /usr/share/ublue-os/bazzite/yafti-gtk.flatpak.version.txt && \
     /ctx/ghcurl "$(/ctx/ghcurl https://api.github.com/repos/xXJSONDeruloXx/yafti-gtk/releases/latest | jq -r '.assets[] | select(.name == "yafti-gtk.flatpak") | .browser_download_url')" -Lo /usr/share/ublue-os/bazzite/yafti-gtk.flatpak && \
     chmod +x /usr/bin/framework_tool && \
     sed -i 's|uupd|& --disable-module-distrobox|' /usr/lib/systemd/system/uupd.service && \
@@ -457,7 +458,6 @@ RUN --mount=type=cache,dst=/var/cache \
         sed -i 's@Exec=ptyxis@Exec=kde-ptyxis@g' /usr/share/applications/org.gnome.Ptyxis.desktop && \
         sed -i 's@Keywords=@Keywords=konsole;console;@g' /usr/share/applications/org.gnome.Ptyxis.desktop && \
         cp /usr/share/applications/org.gnome.Ptyxis.desktop /usr/share/kglobalaccel/org.gnome.Ptyxis.desktop && \
-        setcap 'cap_net_raw+ep' /usr/libexec/ksysguard/ksgrd_network_helper && \
         ln -sf /usr/share/wallpapers/convergence.jxl /usr/share/backgrounds/default.jxl && \
         ln -sf /usr/share/wallpapers/convergence.jxl /usr/share/backgrounds/default-dark.jxl && \
         rm -f /usr/share/backgrounds/default.xml \
