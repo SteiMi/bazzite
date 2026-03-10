@@ -41,6 +41,8 @@ on:
         type: boolean
         default: false
 
+permissions: {}
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref || github.run_id }}
   cancel-in-progress: true
@@ -385,6 +387,8 @@ jobs:
     name: Generate Release
     needs: [push-ghcr]
     if: github.event_name != 'pull_request'
+    permissions:
+      contents: write
     secrets: inherit
     uses: ./.github/workflows/generate_release.yml
 
