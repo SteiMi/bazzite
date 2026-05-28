@@ -245,41 +245,26 @@ RUN --mount=type=cache,dst=/var/cache \
     --mount=type=cache,dst=/var/log \
     --mount=type=bind,from=ctx,source=/,target=/ctx \
     --mount=type=tmpfs,dst=/tmp \
-    --mount=type=secret,id=MODULE_SIGNING_KEY \
     bash -c ' \
     set -e && \
-    dnf5 -y install make gcc && \
+    dnf5 -y install make gcc kernel-devel && \
     mkdir -p /tmp/ryzen_smu_build && \
     cd /tmp/ryzen_smu_build && \
     curl -L https://github.com/amkillam/ryzen_smu/archive/refs/heads/master.tar.gz -o ryzen_smu.tar.gz && \
     tar xzf ryzen_smu.tar.gz && \
     cd ryzen_smu-* && \
-    IMAGE_KERNEL_RPM_VER=$(rpm -q --qf "%{VERSION}-%{RELEASE}" kernel) && \
-    dnf5 -y install /rpms/kernel/kernel-devel-${IMAGE_KERNEL_RPM_VER}*.rpm /rpms/kernel/*/kernel-devel-${IMAGE_KERNEL_RPM_VER}*.rpm || true && \
-    KERNEL_BUILD_DIR="" && \
-    if [ -d /usr/src/kernels/${IMAGE_KERNEL_RPM_VER} ]; then \
-      KERNEL_BUILD_DIR=$(ls -d /usr/src/kernels/${IMAGE_KERNEL_RPM_VER} | head -n1); \
-    elif [ -d /usr/src/linux-headers-${IMAGE_KERNEL_RPM_VER} ]; then \
-      KERNEL_BUILD_DIR=$(ls -d /usr/src/linux-headers-${IMAGE_KERNEL_RPM_VER} | head -n1); \
-    elif [ -d /lib/modules/${IMAGE_KERNEL_RPM_VER}/build ]; then \
-      KERNEL_BUILD_DIR=/lib/modules/${IMAGE_KERNEL_RPM_VER}/build; \
-    else \
-      echo "Kernel build dir not found"; \
-      exit 1; \
-    fi && \
-    echo "Using kernel build dir: ${KERNEL_BUILD_DIR}" && \
-    make KERNEL_BUILD=${KERNEL_BUILD_DIR} && \
+    make && \
     for M in /lib/modules/*; do \
       if [ -d "$M" ] && ( [ -e "$M/build" ] || [ -f "$M/modules.dep" ] || [ -d "$M/kernel" ] ); then \
         mkdir -p "$M/extra"; \
         cp -v ryzen_smu.ko "$M/extra/"; \
       fi; \
     done && \
-    cd /tmp && \
-    rm -rf /tmp/ryzen_smu_build /tmp/kernel_build && \
     depmod -a && \
     mkdir -p /etc/modules-load.d && \
-    echo "ryzen_smu" > /etc/modules-load.d/ryzen_smu.conf \
+    echo "ryzen_smu" > /etc/modules-load.d/ryzen_smu.conf && \
+    cd / && \
+    rm -rf /tmp/ryzen_smu_build \
     ' && \
     /ctx/cleanup
 
