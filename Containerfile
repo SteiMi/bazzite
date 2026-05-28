@@ -240,6 +240,65 @@ RUN --mount=type=cache,dst=/var/cache \
     ; fi && \
     /ctx/cleanup
 
+# Build and install ryzen_smu kernel module
+RUN --mount=type=cache,dst=/var/cache \
+    --mount=type=cache,dst=/var/log \
+    --mount=type=bind,from=ctx,source=/,target=/ctx \
+    --mount=type=tmpfs,dst=/tmp \
+    --mount=type=secret,id=MODULE_SIGNING_KEY \
+    dnf5 -y install \
+        make \
+        gcc && \
+    mkdir -p /tmp/ryzen_smu_build && \
+    cd /tmp/ryzen_smu_build && \
+    curl -L https://github.com/amkillam/ryzen_smu/archive/refs/heads/master.tar.gz -o ryzen_smu.tar.gz && \
+    tar xzf ryzen_smu.tar.gz && \
+        cd ryzen_smu-* && \
+        IMAGE_KERNEL_RPM_VER=$(rpm -q --qf '%{VERSION}-%{RELEASE}' kernel) && \
+        KERNEL_VERSION=${IMAGE_KERNEL_RPM_VER} && \
+        # try installing matching kernel-devel RPM from mounted kernel stage (best-effort)
+        dnf5 -y install /rpms/kernel/kernel-devel-${IMAGE_KERNEL_RPM_VER}*.rpm /rpms/kernel/*/kernel-devel-${IMAGE_KERNEL_RPM_VER}*.rpm || true && \
+        # locate kernel build headers: prefer /usr/src/kernels, then /usr/src/linux-headers, then /lib/modules/<ver>/build
+        if ls -d /usr/src/kernels/${IMAGE_KERNEL_RPM_VER}* >/dev/null 2>&1; then KERNEL_BUILD_DIR=$(ls -d /usr/src/kernels/${IMAGE_KERNEL_RPM_VER}* | head -n1); \
+        elif ls -d /usr/src/kernels/* >/dev/null 2>&1; then KERNEL_BUILD_DIR=$(ls -d /usr/src/kernels/* | head -n1); \
+        elif ls -d /usr/src/linux-headers-${IMAGE_KERNEL_RPM_VER}* >/dev/null 2>&1; then KERNEL_BUILD_DIR=$(ls -d /usr/src/linux-headers-${IMAGE_KERNEL_RPM_VER}* | head -n1); \
+        elif ls -d /usr/src/linux-headers-* >/dev/null 2>&1; then KERNEL_BUILD_DIR=$(ls -d /usr/src/linux-headers-* | head -n1); \
+        elif [ -d /lib/modules/${IMAGE_KERNEL_RPM_VER}/build ]; then KERNEL_BUILD_DIR=/lib/modules/${IMAGE_KERNEL_RPM_VER}/build; \
+        else \
+            # attempt to extract kernel-devel RPM from mounted /rpms/kernel to a temp dir and use its /usr/src tree
+            set -- /rpms/kernel/*/kernel-devel-${IMAGE_KERNEL_RPM_VER}*.rpm /rpms/kernel/kernel-devel-${IMAGE_KERNEL_RPM_VER}*.rpm; \
+            if [ -f "$1" ]; then mkdir -p /tmp/kernel_build && rpm2cpio "$1" | (cd /tmp/kernel_build && cpio -idmv) && \
+                 KERNEL_BUILD_DIR=$(ls -d /tmp/kernel_build/usr/src/kernels/* 2>/dev/null | head -n1 || true) || true; \
+            fi; \
+            if [ -z "${KERNEL_BUILD_DIR}" ] && [ -d /tmp/kernel_build/usr/src/kernels ]; then KERNEL_BUILD_DIR=$(ls -d /tmp/kernel_build/usr/src/kernels/* | head -n1); fi; \
+            if [ -z "${KERNEL_BUILD_DIR}" ]; then echo "Kernel build dir not found. /lib/modules contents:" && ls -la /lib/modules && echo "Listing /rpms/kernel for debugging:" && ls -la /rpms/kernel || true && exit 1; fi; \
+        fi && \
+        echo "Using kernel build dir: ${KERNEL_BUILD_DIR}" && \
+        make KERNEL_BUILD=${KERNEL_BUILD_DIR} && \
+        # Sign the built module with the persistent signing key (if secret is available)
+        if [ -f /run/secrets/MODULE_SIGNING_KEY ]; then \
+          mkdir -p /tmp/ryzen_smu_sign && \
+          cp /run/secrets/MODULE_SIGNING_KEY /tmp/ryzen_smu_sign/module.priv && \
+          if [ -x "${KERNEL_BUILD_DIR}/scripts/sign-file" ] && [ -f /module_signing.der ]; then \
+            "${KERNEL_BUILD_DIR}/scripts/sign-file" sha256 /tmp/ryzen_smu_sign/module.priv /module_signing.der ryzen_smu.ko || true; \
+          fi && \
+          rm -f /tmp/ryzen_smu_sign/module.priv || true; \
+        fi && \
+        # Install the built module into every valid /lib/modules/<ver>/extra so kernels with different suffixes find it
+        for M in /lib/modules/*; do \
+            if [ -d "$M" ] && ( [ -e "$M/build" ] || [ -f "$M/modules.dep" ] || [ -d "$M/kernel" ] ); then \
+                mkdir -p "$M/extra"; \
+                cp -v ryzen_smu.ko "$M/extra/"; \
+            fi; \
+        done && \
+        cd /tmp && \
+        rm -rf /tmp/ryzen_smu_build /tmp/kernel_build && \
+        depmod -a && \
+    fi && \
+    mkdir -p /etc/modules-load.d && \
+    echo "ryzen_smu" > /etc/modules-load.d/ryzen_smu.conf && \
+    /ctx/cleanup
+
 # Install new packages
 RUN --mount=type=cache,dst=/var/cache \
     --mount=type=cache,dst=/var/log \
