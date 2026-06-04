@@ -288,8 +288,7 @@ RUN --mount=type=cache,dst=/var/cache \
         iwd \
         greenboot \
         greenboot-default-health-checks \
-        ublue-os-selinux-workaround \
-        bazzite_updater \
+        ublue-os-selinux-workarounds \
         ScopeBuddy \
         twitter-twemoji-fonts \
         google-noto-sans-cjk-fonts \
