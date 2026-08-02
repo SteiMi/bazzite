@@ -34,7 +34,7 @@ ARG ARCH="${ARCH:-x86_64}"
 ARG BASE_IMAGE="${BASE_IMAGE:-ghcr.io/ublue-os/${BASE_IMAGE_NAME}-main:${FEDORA_VERSION}}"
 ARG NVIDIA_BASE="${NVIDIA_BASE:-bazzite}"
 ARG KERNEL_FLAVOR="${KERNEL_FLAVOR:-ogc}"
-ARG KERNEL_VERSION="${KERNEL_VERSION:-7.0.9-ogc3.2.fc44.x86_64}"
+ARG KERNEL_VERSION="${KERNEL_VERSION:-7.0.9-ogc3.2.fc${FEDORA_VERSION}.${ARCH}}"
 ARG NVIDIA_FLAVOR="${NVIDIA_FLAVOR:-nvidia-open}"
 
 FROM ghcr.io/ublue-os/akmods:${KERNEL_FLAVOR}-${FEDORA_VERSION}-${KERNEL_VERSION} AS akmods
@@ -319,6 +319,8 @@ RUN --mount=type=cache,dst=/var/cache \
     dnf5 -y swap \
         --repo terra \
             switcheroo-control cardwire && \
+    dnf5 -y install --enable-repo=terra \
+        cardwire-gui && \
     ln -s /dev/null /etc/NetworkManager/dispatcher.d/04-iscsi && \
     systemctl mask iscsi && \
     systemctl mask systemd-remount-fs.service && \
