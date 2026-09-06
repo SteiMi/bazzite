@@ -6,7 +6,7 @@ IMAGE_BRANCH=$(jq -r '."image-branch"' < $IMAGE_INFO)
 FEDORA_VERSION=$(jq -r '."fedora-version"' < $IMAGE_INFO)
 
 # SCRIPT VERSION
-HWS_VER=73
+HWS_VER=75
 HWS_VER_FILE="/etc/bazzite/hws_version"
 HWS_VER_RAN=$(cat $HWS_VER_FILE)
 
@@ -107,11 +107,15 @@ fi
 if [[ $IMAGE_NAME =~ "deck" ]]; then
   if /usr/libexec/hwsupport/handheld-hardware; then
     echo "Handheld hardware detected, masking PPD"
-    systemctl mask tuned.service
+    systemctl stop tuned-ppd.service
     systemctl mask tuned-ppd.service
+    systemctl stop tuned.service
+    systemctl mask tuned.service
     if /usr/libexec/hwsupport/valve-hardware; then
       echo "Valve handheld detected, masking powerstation and inputplumber, enabling fan control and vpower".
+      systemctl stop powerstation.service
       systemctl mask powerstation.service
+      systemctl stop inputplumber.service
       systemctl mask inputplumber.service
 
       if [[ ":Jupiter:" =~ ":$SYS_ID:" ]]; then
@@ -130,8 +134,9 @@ if [[ $IMAGE_NAME =~ "deck" ]]; then
     else
       echo "Other handheld detected, unmasking powerstation and inputplumber".
       systemctl unmask powerstation.service
-      systemctl enable powerstation.service
+      systemctl enable --now powerstation.service
       systemctl unmask inputplumber.service
+      systemctl enable --now inputplumber.service
       systemctl disable --now jupiter-fan-control.service
       systemctl disable --now vpower.service
       systemctl disable --now jupiter-biosupdate.service
@@ -141,7 +146,9 @@ if [[ $IMAGE_NAME =~ "deck" ]]; then
     echo "Non-handheld hardware detected, unmasking PPD and masking powerstation".
     systemctl unmask tuned.service
     systemctl unmask tuned-ppd.service
+    systemctl stop inputplumber.service
     systemctl mask inputplumber.service
+    systemctl stop powerstation.service
     systemctl mask powerstation.service
     systemctl mask pulse8-cec-inputattach@.service
     systemctl mask rainshadow-cec-inputattach@.service

@@ -18,7 +18,7 @@ BAZZITE_CONFIG_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/bazzite"
 mkdir -p "$BAZZITE_CONFIG_DIR"
 
 # SCRIPT VERSION
-USER_SETUP_VER=52
+USER_SETUP_VER=53
 USER_SETUP_VER_FILE="$BAZZITE_CONFIG_DIR/version"
 USER_SETUP_FEDORA_VER_FILE="$BAZZITE_CONFIG_DIR/fedora_version"
 USER_SETUP_IMAGE_VER_FILE=$BAZZITE_CONFIG_DIR/image_name""
@@ -29,6 +29,11 @@ fi
 
 if [[ -f "$HOME/.bazzite-configured-fedora-version" ]]; then
   mv -f "$HOME/.bazzite-configured-fedora-version" "$USER_SETUP_FEDORA_VER_FILE"
+fi
+
+# Temporary: Remove OGUI updates while we're shipping a modified copy
+if [ -d "$HOME/.local/share/opengamepadui/updates" ]; then
+  rm -rf "$HOME/.local/share/opengamepadui/updates"
 fi
 
 # Run script if updated
