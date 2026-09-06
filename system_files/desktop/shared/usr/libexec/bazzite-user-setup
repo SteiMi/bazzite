@@ -31,11 +31,6 @@ if [[ -f "$HOME/.bazzite-configured-fedora-version" ]]; then
   mv -f "$HOME/.bazzite-configured-fedora-version" "$USER_SETUP_FEDORA_VER_FILE"
 fi
 
-# Temporary: Remove OGUI updates while we're shipping a modified copy
-if [ -d "$HOME/.local/share/opengamepadui/updates" ]; then
-  rm -rf "$HOME/.local/share/opengamepadui/updates"
-fi
-
 # Run script if updated
 if [[ -f $USER_SETUP_VER_FILE && -f $USER_SETUP_FEDORA_VER_FILE && -f $USER_SETUP_IMAGE_VER_FILE ]]; then
   USER_SETUP_VER_RAN=$(cat $USER_SETUP_VER_FILE)
