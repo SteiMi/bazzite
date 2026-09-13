@@ -321,8 +321,7 @@ RUN --mount=type=cache,dst=/var/cache \
         --repo terra \
             switcheroo-control cardwire && \
     dnf5 -y install --enable-repo=terra \
-        cardwire-gui \
-        8bitdo-udev-rules && \
+        cardwire-gui && \
     ln -s /dev/null /etc/NetworkManager/dispatcher.d/04-iscsi && \
     systemctl mask iscsi && \
     systemctl mask systemd-remount-fs.service && \
@@ -768,7 +767,6 @@ RUN --mount=type=cache,dst=/var/cache \
     systemctl enable wireplumber-sysconf.service && \
     systemctl enable pipewire-workaround.service && \
     systemctl enable pipewire-sysconf.service && \
-    systemctl enable bazzite-tdpfix.service && \
     systemctl --global enable gamemode-news-hook.service && \
     systemctl --global disable sdgyrodsu.service && \
     systemctl --global enable steamos-powerbuttond.service && \
