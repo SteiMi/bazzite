@@ -40,7 +40,7 @@ ARG NVIDIA_FLAVOR="${NVIDIA_FLAVOR:-nvidia-open}"
 FROM ghcr.io/ublue-os/akmods:${KERNEL_FLAVOR}-${FEDORA_VERSION}-${KERNEL_VERSION} AS akmods
 FROM ghcr.io/ublue-os/akmods-extra:${KERNEL_FLAVOR}-${FEDORA_VERSION}-${KERNEL_VERSION} AS akmods-extra
 FROM ghcr.io/ublue-os/akmods-${NVIDIA_FLAVOR}:${KERNEL_FLAVOR}-${FEDORA_VERSION}-${KERNEL_VERSION} AS akmods-nvidia
-FROM ghcr.io/ublue-os/brew:latest@sha256:d52b3f578f01623636aff534291b0bd8ff0a0244ef225bf51aecb5fa05a137af AS brew
+FROM ghcr.io/ublue-os/brew:latest@sha256:60ada2d65891d8797beef49d8b43f2108519cbbaf04c9c7363e1a008677fcd35 AS brew
 
 FROM scratch AS ctx
 COPY build_files /
@@ -165,7 +165,6 @@ RUN --mount=type=cache,dst=/var/cache \
         NetworkManager-wifi \
         NetworkManager-libnm && \
     dnf5 --enable-repo=terra-mesa -y install \
-        mesa-libOpenCL \
         intel-opencl \
         clinfo && \
     dnf5 -y install \
@@ -322,7 +321,8 @@ RUN --mount=type=cache,dst=/var/cache \
         --repo terra \
             switcheroo-control cardwire && \
     dnf5 -y install --enable-repo=terra \
-        cardwire-gui && \
+        cardwire-gui \
+        8bitdo-udev-rules && \
     ln -s /dev/null /etc/NetworkManager/dispatcher.d/04-iscsi && \
     systemctl mask iscsi && \
     systemctl mask systemd-remount-fs.service && \
@@ -354,7 +354,7 @@ RUN --mount=type=cache,dst=/var/cache \
         --repo terra-extras \
             uresourced uresourced-dmemcg \
     ; fi && \
-    dnf5 --enable-repo=terra-mesa --enable-repo=terra -y install \
+    dnf5 --enable-repo=terra-mesa --enable-repo=terra --enable-repo=terra-extras -y install \
         terra-gamescope.x86_64 \
         terra-gamescope-libs.x86_64 \
         terra-gamescope-libs.i686 \
@@ -371,11 +371,12 @@ RUN --mount=type=cache,dst=/var/cache \
         libFAudio.i686 \
         vkBasalt.x86_64 \
         vkBasalt.i686 \
-        mangohud.x86_64 \
-        mangohud.i686 \
+        terra-mangohud.x86_64 \
+        terra-mangohud.i686 \
         obs-studio-plugin-vkcapture-hook-libs.x86_64 \
         obs-studio-plugin-vkcapture-hook-libs.i686 \
-        openxr && \
+        openxr \
+        openxr-libs && \
     dnf5 -y --enable-repo=terra-mesa --enable-repo=terra --setopt=install_weak_deps=False install \
         steam \
         lutris && \
@@ -672,10 +673,14 @@ RUN --mount=type=cache,dst=/var/cache \
         xorg-x11-server-Xvfb \
         python-vdf \
         python-crcmod && \
+    if grep -q "kinoite" <<< "${BASE_IMAGE_NAME}"; then \
+        dnf5 -y install --enable-repo=terra \
+            plasma-applet-tdp-control \
+    ; fi && \
     chmod +x /usr/share/gamescope-session-plus/gamescope-session-plus && \
     sed -i 's/- xbox-elite/- deck/g' /usr/share/inputplumber/devices/50-steam_deck.yaml && \
     sed -i 's/LOG_LEVEL=info/LOG_LEVEL=debug/g' /usr/lib/systemd/system/inputplumber.service && \
-    sed -i 's|^CLIENTCMD="opengamepadui --overlay-mode|/usr/libexec/hwsupport/non-valve-handheld-hardware \&\& CLIENTCMD="env LOG_LEVEL=debug opengamepadui --accessibility disabled --overlay-mode --steam-input --steamos-manager --skip-update-pack|' /usr/share/gamescope-session-plus/sessions.d/ogui-steam && \
+    sed -i 's|^CLIENTCMD="opengamepadui --overlay-mode|/usr/libexec/hwsupport/non-valve-handheld-hardware \&\& CLIENTCMD="opengamepadui --accessibility disabled --overlay-mode --steam-input --steamos-manager --skip-update-pack|' /usr/share/gamescope-session-plus/sessions.d/ogui-steam && \
     git clone https://gitlab.com/evlaV/jupiter-dock-updater-bin.git \
         --depth 1 \
         /tmp/jupiter-dock-updater-bin && \
@@ -731,6 +736,7 @@ RUN --mount=type=cache,dst=/var/cache \
     ; fi && \
     printf "[scx]\nscx_service = \"scx_loader.service\"\n" >> /usr/share/steamos-manager/platform.toml && \
     sed -i 's@\[Desktop Entry\]@\[Desktop Entry\]\nNoDisplay=true@g' /usr/share/applications/input-remapper-gtk.desktop && \
+    sed -i 's@\[Desktop Entry\]@\[Desktop Entry\]\nHidden=true@g' /etc/xdg/autostart/input-remapper-autoload.desktop && \
     sed -i 's@enabled=0@enabled=1@g' /etc/yum.repos.d/_copr_ublue-os-akmods.repo && \
     for copr in \
         ublue-os/staging \
@@ -854,6 +860,7 @@ RUN --mount=type=cache,dst=/var/cache \
     ; fi && \
     sed -i 's/ nvidia_peermem\b//' /usr/lib/dracut/dracut.conf.d/99-nvidia.conf && \
     systemctl enable nvidia-powerd.service && \
+    systemctl disable nvidia-persistenced.service && \
     systemctl enable ublue-nvidia-flatpak-runtime-sync && \
     systemctl enable ublue-nvidia-flatpak-runtime-verify && \
     dnf5 config-manager setopt skip_if_unavailable=1 && \
