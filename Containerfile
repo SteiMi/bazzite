@@ -152,16 +152,16 @@ RUN --mount=type=cache,dst=/var/cache \
         pipewire-config-raop \
         mesa-va-drivers && \
     declare -A toswap=( \
-        ["copr:copr.fedorainfracloud.org:ublue-os:bazzite"]="wireplumber" \
         ["copr:copr.fedorainfracloud.org:ublue-os:bazzite-multilib"]="bluez xorg-x11-server-Xwayland" \
         ["terra-mesa"]="mesa-filesystem" \
     ) && \
+    dnf5 -y swap --allowerasing \
+        --repo terra-extras \
+            wireplumber terra-wireplumber && \
     for repo in "${!toswap[@]}"; do \
         for package in ${toswap[$repo]}; do dnf5 -y swap --from-repo=$repo $package $package; done; \
     done && unset -v toswap repo package && \
     dnf5 versionlock add \
-        wireplumber \
-        wireplumber-libs \
         bluez \
         bluez-cups \
         bluez-libs \
@@ -691,10 +691,8 @@ RUN --mount=type=cache,dst=/var/cache \
     sed -i 's/- xbox-elite/- deck/g' /usr/share/inputplumber/devices/50-steam_deck.yaml && \
     sed -i 's/LOG_LEVEL=info/LOG_LEVEL=debug/g' /usr/lib/systemd/system/inputplumber.service && \
     sed -i \
-        -e 's|mkdir -p ~/.local/share/Steam|mkdir -p ~/.local/share|g' \
-        -e 's|-C ~/.local/share/Steam|-C ~/.local/share|g' \
-        -e 's|/etc/first-boot/bootstraplinux_ubuntu12_32.tar.xz|/usr/share/gamescope-session-plus/bootstrap_steam.tar.gz|g' \
-        -e 's|steamos-session-select desktop|steamosctl switch-to-desktop-mode|' \
+        -e 's|^export GAMESCOPE_SESSION_STEAM_BOOTSTRAP_ARCHIVE=.*$|export GAMESCOPE_SESSION_STEAM_BOOTSTRAP_ARCHIVE="/usr/share/gamescope-session-plus/bootstrap_steam.tar.gz"|' \
+        -e 's|^export GAMESCOPE_SESSION_STEAM_BOOTSTRAP_DIR=.*$|export GAMESCOPE_SESSION_STEAM_BOOTSTRAP_DIR="${HOME}/.local/share"|' \
         -e '/# Run steam-tweaks if exists/,+3c\    if command -v /usr/bin/bazzite-steam-brand > /dev/null; then\
             /usr/bin/bazzite-steam-brand\
         fi' \
