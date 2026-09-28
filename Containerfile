@@ -308,6 +308,7 @@ RUN --mount=type=cache,dst=/var/cache \
         glow \
         gum \
         vim \
+        msedit \
         cockpit-networkmanager \
         cockpit-podman \
         cockpit-selinux \
@@ -337,6 +338,9 @@ RUN --mount=type=cache,dst=/var/cache \
     dnf5 -y swap --allowerasing \
         --repo terra-extras \
             ddcutil terra-ddcutil && \
+    dnf5 -y swap --allowerasing \
+        --repo terra-extras \
+            libddcutil terra-libddcutil && \
     ln -s /dev/null /etc/NetworkManager/dispatcher.d/04-iscsi && \
     systemctl mask iscsi && \
     systemctl mask systemd-remount-fs.service && \
@@ -683,7 +687,8 @@ RUN --mount=type=cache,dst=/var/cache \
         qt6-qtvirtualkeyboard \
         xorg-x11-server-Xvfb \
         python-vdf \
-        python-crcmod && \
+        python-crcmod \
+        acpid && \
     if grep -q "kinoite" <<< "${BASE_IMAGE_NAME}"; then \
         dnf5 -y install --enable-repo=terra \
             plasma-applet-tdp-control \
@@ -793,6 +798,8 @@ RUN --mount=type=cache,dst=/var/cache \
     systemctl disable vpower.service && \
     systemctl disable jupiter-biosupdate.service && \
     systemctl disable jupiter-controller-update.service && \
+    systemctl disable acpid.service && \
+    find /etc/acpi/events -mindepth 1 -delete && \
     dnf5 config-manager setopt skip_if_unavailable=1 && \
     /ctx/image-info && \
     /ctx/build-initramfs && \
@@ -858,6 +865,9 @@ RUN --mount=type=cache,dst=/var/cache \
     ln -s libnvidia-ml.so.1 /usr/lib64/libnvidia-ml.so && \
     dnf5 config-manager setopt "terra-mesa".enabled=0 && \
     dnf5 -y copr disable ublue-os/staging && \
+    dnf5 -y swap \
+        --repo terra-extras \
+            waydroid waydroid-nvidia && \
     /ctx/cleanup
 
 # Cleanup & Finalize
